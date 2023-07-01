@@ -1,0 +1,18 @@
+library(glmnet)
+y <- read.table(file = "Y.txt",header = T,sep = "\t",row.names = 1)
+x <- read.table(file = "X.txt",header = T,sep = "\t",row.names = 1)
+x<-as.matrix(x)
+y<-as.matrix(y)
+y[1:5,]
+x[1:5,]
+set.seed(20201015)
+fit = glmnet(x, y, family = " binomial")
+par(mar=c(5,5,3,2),cex = 0.8)
+plot(fit,cex.axis=1)
+cvfit = cv.glmnet(x, y, family = " binomial")
+par(mar=c(5,5,3,2),cex = 0.8)
+plot(cvfit,cex.axis=0.8)
+coef.min = coef(cvfit, s = "lambda.min")
+active.min = which(coef.min != 0)
+index.min = coef.min[active.min]
+index.min
