@@ -1,0 +1,14 @@
+#Pearson correlation
+library(tidyverse)
+library(corrplot)
+library(ggplot2)
+library(ggcorrplot)
+
+data <- read.table("~/file.txt", header = T)
+rownames(data) <- data[,1]
+data <- data[,-1]
+
+corrplot(as.matrix(data))
+p <- ggcorrplot(data)
+
+p
