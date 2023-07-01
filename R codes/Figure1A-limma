@@ -1,0 +1,27 @@
+#limma
+library(limma)
+group_list = factor(group_list)
+design <- model.matrix(~0+group_list)
+rownames(design) = colnames(exprSet_by_group)
+colnames(design) <- levels(group_list)
+
+DGElist <- DGEList(counts = exprSet_by_group, group = group_list)
+keep_gene <- rowSums( cpm(DGElist) > 1 ) >= 2 
+DGElist <- DGElist[ keep_gene, , keep.lib.sizes = FALSE ]
+
+library(edgeR)
+DGElist <- calcNormFactors( DGElist )
+v <- voom(DGElist, design, plot = TRUE, normalize = "quantile")
+
+fit <- lmFit(v, design)
+cont.matrix <- makeContrasts(contrasts = c('DKD-Normal'), levels = design)
+fit2 <- contrasts.fit(fit, cont.matrix)
+fit2 <- eBayes(fit2)
+
+nrDEG_limma_voom <- topTable(fit2, coef = 'DKD-Normal', n = Inf)
+nrDEG_limma_voom <- na.omit(nrDEG_limma_voom)
+
+library(dplyr)
+#这里使用logFC > 2 且adj.P.Val < 0.05的作为差异基因，可以根据需求改变阈值大小
+nrDEG_limma_voom_signif <- nrDEG_limma_voom %>% filter(logFC > 1) %>% filter(adj.P.Val < 0.05)
+save(nrDEG_limma_voom_signif,file = 'nrDEG_limma_voom_signif.Rdata')
