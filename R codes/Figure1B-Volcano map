@@ -1,0 +1,13 @@
+#Volcano map
+library(ggplot2)
+library(ggrepel)
+DEG$Genes <- rownames(DEG)
+pdf(paste0(job,"_","volcano2.pdf"),width = 7,height = 7)
+ggplot(DEG,aes(x=logFC,y=-log10(P.adj)))+ 
+  geom_point(alpha=0.5,size=2,aes(color=regulate))+ 
+  ylab("-log10(P.adj)")+ 
+  scale_color_manual(values = c("blue", "grey", "red"))+ 
+  geom_vline(xintercept = c(-1,1),lty=4,col ="black",lwd=0.8)+ 
+  geom_hline(yintercept=-log10(0.05),lty=4,col = "black",lwd=0.8)+ 
+  theme_bw()  
+dev.off()
