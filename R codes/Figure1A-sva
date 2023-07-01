@@ -1,0 +1,78 @@
+#sva 
+library(tidyverse)
+library(AnnoProbe)
+library(GEOquery)
+library(limma)
+gset <- geoChina("GSE30122")
+gset <- gset[[1]]
+dat=exprs(gset)
+dim(dat)
+boxplot(dat)
+exp <- normalizeBetweenArrays(dat)
+boxplot(exp)
+
+pd <- pData(gset)
+p = identical(rownames(pd),colnames(dat));p
+gpl_number <- gset@annotation;gpl_number
+Group <- pd$source_name_ch1
+exp <- as.data.frame(t(exp))
+library(FactoMineR)
+library(factoextra) 
+dat.pca <- PCA(exp, graph = FALSE)
+pca_plot <- fviz_pca_ind(dat.pca,
+                         geom.ind = "point", 
+                         col.ind = Group, 
+                         palette = c("#00AFBB", "#E7B800"),
+                         addEllipses = TRUE, 
+                         legend.title = "Groups"
+)
+pca_plot
+
+exp <- as.data.frame(t(exp))
+cg=names(tail(sort(apply(exp,1,sd)),1000))
+n=exp[cg,]
+annotation_col=data.frame(group=Group)
+rownames(annotation_col)=colnames(n) 
+library(pheatmap)
+pheatmap(n,
+         show_colnames =F,
+         show_rownames = F,
+         annotation_col=annotation_col,
+         scale = "row",
+         breaks = seq(-3,3,length.out = 100)
+         ) 
+dev.off()
+
+save(pd,dat,gpl_number,file = "step1output.Rdata")
+load("step1output.Rdata")
+batch <- rep(c("b1","b2"),each = 10 )
+library(sva)
+combat_edata1 = ComBat(dat=as.matrix(dat), 
+                       batch= batch , mod=NULL, 
+                       par.prior=T, prior.plots=F)
+combat_edata1[1:4,1:4]
+boxplot(combat_edata1)
+dat <- as.data.frame(t(combat_edata1))
+dat.pca <- PCA(dat, graph = FALSE)
+pca_plot <- fviz_pca_ind(dat.pca,
+                         geom.ind = "point", 
+                         col.ind = Group, 
+                         palette = c("#00AFBB", "#E7B800"),
+                         addEllipses = TRUE, 
+                         legend.title = "Groups"
+)
+pca_plot
+dat <- as.data.frame(t(dat))
+cg=names(tail(sort(apply(dat,1,sd)),1000))
+n=dat[cg,]
+annotation_col=data.frame(group=Group)
+rownames(annotation_col)=colnames(n) 
+library(pheatmap)
+pheatmap(n,
+         show_colnames =F,
+         show_rownames = F,
+         annotation_col=annotation_col,
+         scale = "row",
+         breaks = seq(-3,3,length.out = 100)
+         ) 
+dev.off()
