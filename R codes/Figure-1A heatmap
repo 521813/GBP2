@@ -1,0 +1,13 @@
+#heat map
+library(pheatmap)
+DEG_genes <- DEG[DEG$P.Value<0.05&abs(DEG$logFC)>1,]
+DEG_gene_expr <- expr_data[rownames(DEG_genes),]
+#DEG_gene_expr[is.infinite(DEG_gene_expr)] = 0
+#DEG_gene_expr[DEG_gene_expr == -Inf] = 0
+pdf(paste0(job,"_","pheatmap.pdf"))
+pheatmap(DEG_gene_expr,
+         color = colorRampPalette(c("blue","white","red"))(100), 
+         scale = "row", 
+         border_color = 
+         fontsize = 10, 
+         show_rownames = F)
