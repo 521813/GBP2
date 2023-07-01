@@ -1,0 +1,196 @@
+#WGCNA
+rm(list = ls())
+gc()
+stringsAsFactors = FALSE
+getwd()
+load("exprset1.RData")
+library(WGCNA)
+library(tidyverse)
+library(ggplot2)
+exp_tum <- exprset1[, str_sub(colnames(exprset1),14,15) != 11]
+exp <- as.data.frame(exp_tum)[,1:100]  
+data.mat <- t(exp[order(apply(exp, 1, mad), decreasing = T)[1:5000],])
+gsg <- goodSamplesGenes(data.mat, verbose = 3) 
+
+if (!gsg$allOK) {                    
+    if (sum(!gsg$goodGenes)>0)       
+    printFlush(paste("Removing genes:", 
+                     paste(names(data.mat)[!gsg$goodGenes], collapse = ",")));
+    if (sum(!gsg$goodSamples)>0)     
+    printFlush(paste("Removing samples:", 
+                     paste(rownames(data.mat)[!gsg$goodSamples], collapse = ",")));
+  data.mat = data.mat[gsg$goodSamples, gsg$goodGenes]
+}
+
+sampleTree <- hclust(dist(data.mat), method = "average")
+plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="")
+
+enableWGCNAThreads()
+type <- "unsigned"
+powers <- c(1:10, seq(from = 12, to=30, by=2))
+sft <- pickSoftThreshold(
+  data.mat, powerVector=powers, 
+  networkType=type, verbose=3
+)
+
+par(mfrow = c(1,2))
+cex1 = 0.9
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     xlab="Soft Threshold (power)",
+     ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+     main = paste("Scale independence"))
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     labels=powers,cex=cex1,col="red")
+abline(h=0.85,col="red")
+
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+     xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+     main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, 
+     cex=cex1, col="red")
+
+net <- blockwiseModules(
+  data.mat,
+  power = 5,  
+  maxBlockSize = 2000,
+  TOMType = type,
+  minModuleSize = 30,
+  reassignThreshold = 0,
+  mergeCutHeight = 0.25,
+  numericLabels = TRUE,
+  pamRespectsDendro = FALSE,
+  saveTOMs = TRUE,
+  saveTOMFileBase = "003_KIRC_expression",
+  verbose = 3
+)
+
+table(net$colors) 
+
+moduleLabels = net$colors
+moduleColors = labels2colors(moduleLabels)
+
+plotDendroAndColors(net$dendrograms[[1]], moduleColors[net$blockGenes[[1]]],
+"Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+MEs = net$MEs
+
+MEs_col = MEs
+colnames(MEs_col) = paste0("ME", labels2colors(
+  as.numeric(str_replace_all(colnames(MEs),"ME",""))))
+MEs_col = orderMEs(MEs_col)
+
+plotEigengeneNetworks(MEs_col, "Eigengene adjacency heatmap", 
+                      marDendro = c(3,3,2,4),
+                      marHeatmap = c(3,4,2,2), plotDendrograms = T, 
+                      xLabelsAngle = 90)
+
+networkType=type)
+load(net$TOMFiles[1], verbose=T)
+TOM <- as.matrix(TOM)
+dissTOM = 1-TOM
+plotTOM = dissTOM^7
+diag(plotTOM) = NA
+
+TOMplot(
+  plotTOM, 
+  net$dendrograms[[1]], 
+  moduleColors[net$blockGenes[[1]]],
+  main = "Network heatmap plot, all genes"
+)
+mycolor <- gplots::colorpanel(250, 'red', "orange", 'lemonchiffon')
+TOMplot(
+  plotTOM, net$dendrograms[[1]],   
+  moduleColors[net$blockGenes[[1]]],
+  main = "Network heatmap plot, all genes",
+  col = mycolor
+)
+
+file <- "003_KIRC_expression"
+genes <- names(net$colors[net$blockGenes[[1]]])
+dimnames(TOM) <- list(genes, genes)
+cyt <- exportNetworkToCytoscape(
+  TOM,
+  edgeFile = paste0(file, ".edges.txt"),
+  nodeFile = paste0(file, ".nodes.txt"),
+  weighted = TRUE,
+  threshold = 0,
+  nodeNames = genes,
+  nodeAttr = moduleColors[net$blockGenes[[1]]]
+)
+
+module <- "red"
+moduleGenes <- names(net$colors)[which(moduleColors == module)]
+moduleGenes
+
+json <- jsonlite::fromJSON("metadata.cart.2023-03-14.json")
+
+entity_submitter_id <- sapply(json$associated_entities,function(x){x[,1]})
+case_id <- sapply(json$associated_entities,function(x){x[,3]})
+sample_case <- t(rbind(entity_submitter_id,case_id))
+
+clinical <- read_tsv('clinical.cart.2023-03-14\\clinical.tsv')
+clinical <- as.data.frame(clinical[duplicated(clinical$case_id),])
+matrix <- merge(sample_case,clinical,by="case_id",all.x=T)
+
+clin <- c("case_submitter_id","age_at_index","ethnicity","gender","race",
+          "vital_status","days_to_death","days_to_last_follow_up",
+          "ajcc_pathologic_stage","ajcc_pathologic_t","ajcc_pathologic_m",
+          "ajcc_pathologic_n","treatment_type")
+matrix = matrix[,clin] 
+
+colnames(matrix) <- c("ID","Age","Ethnicity","Gender","Race",
+                      "Status","days_to_death","days_to_last_follow_up",
+                      "Stage","T","M","N","Treatment") 
+matrix = matrix[matrix$Status %in% c('Alive','Dead'),] 
+
+rownames(MEs_col) <- substr(rownames(MEs_col), 1, 12)
+design <- model.matrix(~0 + matrix$Status)
+dimnames(design) <- list(matrix$ID, sort(unique(matrix$Status)))
+design <- design[rownames(MEs_col),]
+
+modTraitCor <- cor(MEs_col, design, use = "p")
+modTraitP <- corPvalueStudent(modTraitCor, dim(matrix)[1])
+
+textMatrix <- paste0(signif(modTraitCor, 2), "\n(", signif(modTraitP, 1), ")")
+dim(textMatrix) <- dim(modTraitCor)
+labeledHeatmap(
+  Matrix = modTraitCor,
+  xLabels = colnames(design),
+  yLabels = colnames(MEs_col),
+  cex.lab = 0.5,
+  ySymbols = colnames(MEs_col),
+  colorLabels = FALSE,
+  colors = blueWhiteRed(50),
+  textMatrix = textMatrix,
+  setStdMargins = FALSE,
+  cex.text = 0.5,
+  zlim = c(-1, 1),
+  main = paste("Module-trait relationships")
+)
+
+nSamples <- dim(data.mat)[1]
+geneModuleMembership <- cor(data.mat, MEs_col, use = "p")
+MMPvalue <- corPvalueStudent(geneModuleMembership, nSamples)
+
+geneSignificanceCor <- cor(data.mat, design, use = "p")
+geneSignificanceP <- corPvalueStudent(geneSignificanceCor, nSamples)
+
+module <- "red"
+column <- paste0("ME", module)
+moduleGenes <- names(net$colors)[which(moduleColors == module)]
+MM <- abs(geneModuleMembership[moduleGenes, column])
+GS <- abs(geneSignificanceCor[moduleGenes, 1])
+verboseScatterplot(
+    MM, GS,
+    xlab = paste("Module Membership in", module, "module"),
+    ylab = "Gene significance for proliferating",
+    main = paste("Module membership vs. gene significance\n"),
+    abline = TRUE,
+    pch = 21,
+    cex.main = 1.2,
+    cex.lab = 1.2,
+    cex.axis = 1.2,
+    col = "black",
+    bg = module
+  )
